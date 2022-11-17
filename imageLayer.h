@@ -84,7 +84,8 @@ addElementImageLayer(
 void
 changeSourceImageLayer(
     IMAGE_LAYER_T *il,
-    DISPMANX_UPDATE_HANDLE_T update);
+    DISPMANX_UPDATE_HANDLE_T update,
+    VC_RECT_T *rect);
 
 void
 changeSourceAndUpdateImageLayer(

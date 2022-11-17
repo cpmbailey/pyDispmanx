@@ -68,7 +68,7 @@ static pixelAspectRatio getPixelAspect(TV_DISPLAY_STATE_T *tvstate){
                 break;
             case HDMI_ASPECT_15_9:
                 displayAspectW = 15;
-                displayAspectH = 10;
+                displayAspectH = 9;
                 valid = true;
                 break;
             case HDMI_ASPECT_64_27:
@@ -126,6 +126,8 @@ typedef struct {
     int32_t number;
     IMAGE_LAYER_T imageLayer;
     DISPMANX_DISPLAY_HANDLE_T display;
+    int32_t width;
+    int32_t height;
 } dispmanxLayer;
 
 // setup the display when the object is created
@@ -147,7 +149,8 @@ static PyObject *dispmanxLayer_new (PyTypeObject *type, PyObject *args, PyObject
 
 // create a fullscreen transparent layer when a new object is created
 static int dispmanxLayer_init (dispmanxLayer *self, PyObject *args, PyObject *kwds)  {
-    if (!PyArg_ParseTuple (args, "i|b", &self->number, &self->displayId)) {
+    static char *kwlist[] = {"number", "displayId", "width", "height", NULL};
+    if (!PyArg_ParseTupleAndKeywords (args, kwds, "|ibii", kwlist, &self->number, &self->displayId, &self->width, &self->height)) {
         return -1;
     }
 
@@ -180,10 +183,16 @@ static int dispmanxLayer_init (dispmanxLayer *self, PyObject *args, PyObject *kw
     TV_DISPLAY_STATE_T tvstate;
     vc_tv_get_display_state_id( self->displayId, &tvstate);
     pixelAspectRatio par = getPixelAspect(&tvstate);
-    initImage (& (self->imageLayer.image), VC_IMAGE_RGBA32, par.displayWidth, info.height, true);
+    if (!self->width) {
+        self->width = par.displayWidth;
+    }
+    if (!self->height) {
+        self->height = info.height;
+    }
+    initImage (& (self->imageLayer.image), VC_IMAGE_RGBA32, self->width, self->height, true);
     createResourceImageLayer (& (self->imageLayer), self->number);
     DISPMANX_UPDATE_HANDLE_T update = vc_dispmanx_update_start (0);
-    addElementImageLayerOffset (& (self->imageLayer), 0, 0, &info, self->display, update);
+    addElementImageLayerCentered (& (self->imageLayer), &info, self->display, update);
     vc_dispmanx_update_submit_sync (update);
     return 0;
 }
@@ -197,25 +206,31 @@ static void dispmanxLayer_dealloc (dispmanxLayer *self) {
 
 // function to trigger an update to the display
 static PyObject *method_updateLayer (dispmanxLayer *self, PyObject *args) {
+    int32_t x = self->imageLayer.bmpRect.x;
+    int32_t y = self->imageLayer.bmpRect.y;
+    int32_t width = self->imageLayer.bmpRect.width;
+    int32_t height = self->imageLayer.bmpRect.height;
+    VC_RECT_T rect;
+
+    if (!PyArg_ParseTuple (args, "|iiii", &x, &y, &width, &height)) {
+        Py_RETURN_FALSE;
+    }
+    vc_dispmanx_rect_set(&rect, x, y, width, height);
+
     DISPMANX_UPDATE_HANDLE_T update = vc_dispmanx_update_start (0);
-    changeSourceImageLayer (& (self->imageLayer), update);
+    changeSourceImageLayer (& (self->imageLayer), update, &rect);
     vc_dispmanx_update_submit_sync (update);
     Py_RETURN_TRUE;
 }
 
 static PyMethodDef dispmanxMethods[] = {
-    {"updateLayer", (PyCFunction) method_updateLayer, METH_NOARGS, "update display to show current buffer"},
+    {"updateLayer", (PyCFunction) method_updateLayer, METH_VARARGS, "update display to show current buffer"},
     {NULL}
 };
 
 // getter for the size of the display as part of the object
 static PyObject *dispmanx_getsize (dispmanxLayer *self, void *closure) {
-    DISPMANX_MODEINFO_T info;
-    vc_dispmanx_display_get_info (self->display, &info);
-    TV_DISPLAY_STATE_T tvstate;
-    vc_tv_get_display_state_id( self->displayId, &tvstate);
-    pixelAspectRatio par = getPixelAspect(&tvstate);
-    return Py_BuildValue ("(ii)", par.displayWidth, info.height);
+    return Py_BuildValue ("(ii)", self->width, self->height);
 }
 
 static PyGetSetDef dispmanx_getsetters[] = {

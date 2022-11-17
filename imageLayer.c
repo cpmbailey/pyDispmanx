@@ -122,10 +122,10 @@ addElementImageLayerCentered(
                          il->image.height << 16);
 
     vc_dispmanx_rect_set(&(il->dstRect),
-                         (info->width - (il->image.width*2)) / 2,
-                         (info->height - (il->image.height*2)) / 2,
-                         info->width,
-                         info->height);
+                         (info->width - il->image.width) / 2,
+                         (info->height - il->image.height) / 2,
+                         il->image.width,
+                         il->image.height);
 
     addElementImageLayer(il, display, update);
 }
@@ -164,13 +164,18 @@ addElementImageLayer(
 void
 changeSourceImageLayer(
     IMAGE_LAYER_T *il,
-    DISPMANX_UPDATE_HANDLE_T update)
+    DISPMANX_UPDATE_HANDLE_T update,
+    VC_RECT_T *rect)
 {
+    if (!rect) {
+        rect = &(il->bmpRect);
+    }
+
     int result = vc_dispmanx_resource_write_data(il->resource,
                                                  il->image.type,
                                                  il->image.pitch,
                                                  il->image.buffer,
-                                                 &(il->bmpRect));
+                                                 rect);
     assert(result == 0);
 
     result = vc_dispmanx_element_change_source(update,
